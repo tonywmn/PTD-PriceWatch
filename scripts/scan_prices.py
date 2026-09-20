@@ -11,8 +11,8 @@ from pywebpush import WebPushException, webpush
 
 from parsers import parse_text
 
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_SECRET_KEY = os.environ["SUPABASE_SECRET_KEY"]
+SUPABASE_URL = os.environ["SUPABASE_URL"].strip().rstrip("/")
+SUPABASE_SECRET_KEY = os.environ["SUPABASE_SECRET_KEY"].strip()
 
 HEADERS = {
     "apikey": SUPABASE_SECRET_KEY,
