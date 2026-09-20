@@ -1,0 +1,6 @@
+const CACHE='ptd-v1';const ASSETS=['./','./index.html','./styles.css','./app.js','./config.js','./manifest.webmanifest','./assets/icons/icon-192.svg'];
+self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
+self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
+self.addEventListener('fetch',e=>{if(e.request.method==='GET')e.respondWith(fetch(e.request).then(r=>{const x=r.clone();caches.open(CACHE).then(c=>c.put(e.request,x));return r}).catch(()=>caches.match(e.request)))});
+self.addEventListener('push',e=>{let d={};try{d=e.data.json()}catch{d={body:e.data?.text()}};e.waitUntil(self.registration.showNotification(d.title||'PriceTrack Alarm',{body:d.body||'Angebot verfügbar',icon:'./assets/icons/icon-192.svg',badge:'./assets/icons/icon-192.svg',tag:d.tag||'price-alert',data:{url:d.url||'./'}}))});
+self.addEventListener('notificationclick',e=>{e.notification.close();e.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(ws=>{const url=e.notification.data?.url||'./';for(const w of ws){if('focus'in w){w.navigate(url);return w.focus()}}return clients.openWindow(url)}))});
