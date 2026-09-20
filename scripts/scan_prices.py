@@ -24,7 +24,9 @@ def notify(product,source):
   except WebPushException as e:
    if getattr(e.response,'status_code',0) in (404,410):api(f"push_subscriptions?endpoint=eq.{requests.utils.quote(sub['endpoint'],safe='')}",'PATCH',{'active':False})
 def main():
- if not business_time():print('Outside configured business window');return
+if not business_time() and os.getenv('FORCE_SCAN', 'false').lower() != 'true':
+ print('Outside configured business window')
+ return
  products=api('products?active=eq.true&select=*') or []
  sources=api('product_sources?active=eq.true&select=*,providers(*)') or []
  products_by={x['id']:x for x in products};todo=[x for x in sources if due(x)]
