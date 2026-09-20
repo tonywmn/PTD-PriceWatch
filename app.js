@@ -1,0 +1,67 @@
+const C=window.PTD_CONFIG;
+const sb=supabase.createClient(C.supabaseUrl,C.supabasePublishableKey,{auth:{persistSession:true,detectSessionInUrl:true}});
+let product=null,sources=[],chart=null,days=30;
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const euro=v=>v==null?'–':new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(v);
+const fmtDate=v=>v?new Intl.DateTimeFormat('de-DE',{dateStyle:'short',timeStyle:'short'}).format(new Date(v)):'Noch nicht geprüft';
+const ORDER=['PlayStation Direct DE','Amazon.de','Alternate DE','Expert DE','MediaMarkt DE','Saturn DE','Geizhals DE','Idealo DE'];
+const logos={
+ 'PlayStation Direct DE':'https://cdn.simpleicons.org/playstation/0070D1',
+ 'Amazon.de':'https://www.google.com/s2/favicons?domain=amazon.de&sz=128',
+ 'MediaMarkt DE':'https://www.google.com/s2/favicons?domain=mediamarkt.de&sz=128',
+ 'Saturn DE':'https://www.google.com/s2/favicons?domain=saturn.de&sz=128',
+ 'Alternate DE':'https://www.google.com/s2/favicons?domain=alternate.de&sz=128',
+ 'Expert DE':'https://www.google.com/s2/favicons?domain=expert.de&sz=128',
+ 'Geizhals DE':'https://www.google.com/s2/favicons?domain=geizhals.de&sz=128',
+ 'Idealo DE':'https://www.google.com/s2/favicons?domain=idealo.de&sz=128'};
+function toast(m){$('#toast').textContent=m;$('#toast').classList.add('show');setTimeout(()=>$('#toast').classList.remove('show'),3000)}
+function newest(){return sources.map(s=>s.last_checked_at).filter(Boolean).sort().pop()||null}
+async function load(){
+ const {data:ps,error:pe}=await sb.from('products').select('*').eq('active',true).limit(1);
+ if(pe||!ps?.length){$('#systemStatus').textContent='Keine Produktkonfiguration';return}
+ product=ps[0];
+ const {data:ss,error:se}=await sb.from('product_sources').select('*,providers(*)').eq('product_id',product.id);
+ if(se){$('#systemStatus').textContent='Anbieterdaten konnten nicht geladen werden';return}
+ sources=(ss||[]).sort((a,b)=>ORDER.indexOf(a.providers.name)-ORDER.indexOf(b.providers.name));render();await loadHistory();
+}
+function card(s){
+ const a=s.availability||'unknown';const label=a==='available'?'Verfügbar':a==='unavailable'?'Nicht verfügbar':'Unbestätigt';
+ const type=s.providers.provider_type==='comparison'?'Vergleichsportal':'Direktanbieter';const logo=logos[s.providers.name]||'assets/icons/icon-192.svg';
+ return `<a class="provider-card" href="${s.product_url}" target="_blank" rel="noopener"><div class="provider-top"><div class="brand"><img class="brand-icon" src="${logo}" alt="${s.providers.name}" onerror="this.src='assets/icons/icon-192.svg'"><div><h3>${s.providers.name}</h3><small>${type}</small></div></div><span class="badge ${a}">${label}</span></div><div class="provider-price">${euro(s.last_price)}</div><div class="provider-meta">${s.status||'Noch nicht geprüft'}<br>Aktualisiert: ${fmtDate(s.last_success_at||s.last_checked_at)}</div></a>`;
+}
+function render(){
+ const valid=sources.filter(s=>s.availability==='available'&&s.last_price!=null).sort((a,b)=>a.last_price-b.last_price),best=valid[0];
+ $('#systemStatus').textContent='Monitoring aktiv';$('#heroPrice').textContent=best?euro(best.last_price):'Kein Treffer';$('#heroText').textContent=best?`${best.providers.name} · verfügbar`:'Derzeit kein bestätigtes Angebot';
+ $('#alertPrice').textContent=euro(product.alert_price);$('#targetPrice').textContent=euro(product.target_price);$('#lastUpdated').textContent=fmtDate(newest());$('#providerCount').textContent=`${sources.length} Quellen`;
+ const direct=sources.filter(s=>s.providers.provider_type!=='comparison');const compare=sources.filter(s=>s.providers.provider_type==='comparison');
+ $('#providerGrid').innerHTML=`<div class="provider-section-title"><h3>Direktanbieter</h3><span>${direct.length}</span></div><div class="provider-subgrid">${direct.map(card).join('')}</div><div class="provider-section-title comparison-title"><h3>Preisvergleich</h3><span>${compare.length}</span></div><div class="provider-subgrid comparison-grid">${compare.map(card).join('')}</div>`;fillSettings();
+}
+async function loadHistory(){
+ if(!sources.length)return;const since=new Date(Date.now()-days*86400000).toISOString();
+ const {data,error}=await sb.from('price_history').select('price,checked_at,source_id').in('source_id',sources.map(s=>s.id)).eq('validated',true).gte('checked_at',since).order('checked_at');
+ const rows=error?[]:(data||[]);$('#chartEmpty').hidden=rows.length>0;if(error)$('#chartEmpty').textContent='Preishistorie konnte nicht geladen werden.';
+ const grouped={};rows.forEach(r=>(grouped[r.source_id]??=[]).push(r));const colors=['#007aff','#34c759','#ff9500','#af52de','#ff3b30','#5ac8fa','#ff2d55','#5856d6'];
+ const sets=Object.entries(grouped).map(([id,v],i)=>({label:sources.find(s=>s.id===id)?.providers.name||'Quelle',data:v.map(r=>({x:r.checked_at,y:r.price})),borderColor:colors[i%colors.length],pointRadius:1,tension:.25}));
+ chart?.destroy();chart=new Chart($('#priceChart'),{type:'line',data:{datasets:sets},options:{responsive:true,parsing:false,plugins:{legend:{display:false}},scales:{x:{type:'category',ticks:{display:false},grid:{display:false}},y:{grid:{color:'rgba(128,128,128,.14)'}}}}});
+}
+function fillSettings(){if(!product)return;$('#alertInput').value=product.alert_price;$('#targetInput').value=product.target_price;$('#sourceToggles').innerHTML=sources.map(s=>`<label class="toggle-row">${s.providers.name}<input class="switch" type="checkbox" data-id="${s.id}" ${s.active?'checked':''}></label>`).join('')}
+async function authState(){const {data:{session}}=await sb.auth.getSession();$('#authBlock').hidden=!!session;$('#settingsContent').hidden=!session}
+async function triggerManualScan(){
+ const {data:{session}}=await sb.auth.getSession();if(!session){$('#settingsDialog').showModal();await authState();toast('Bitte zuerst mit deiner privaten E-Mail anmelden');return}
+ const previous=newest();$('#refreshBtn').disabled=true;$('#refreshBtn').textContent='…';toast('Preisprüfung wird gestartet');const {error}=await sb.functions.invoke('trigger-price-scan',{body:{}});
+ if(error){toast(`Start fehlgeschlagen: ${error.message}`);$('#refreshBtn').disabled=false;$('#refreshBtn').textContent='↻';return}
+ toast('Preisprüfung läuft');let attempts=0;const timer=setInterval(async()=>{attempts++;await load();const current=newest();if((current&&current!==previous)||attempts>=18){clearInterval(timer);$('#refreshBtn').disabled=false;$('#refreshBtn').textContent='↻';toast(current&&current!==previous?'Neue Ergebnisse geladen':'Scan läuft weiter. Später erneut aktualisieren.')}},10000);
+}
+function toBytes(v){const p='='.repeat((4-v.length%4)%4),b=atob((v+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...b].map(c=>c.charCodeAt(0)))}
+async function enablePush(){
+ if(!('serviceWorker'in navigator&&'PushManager'in window)){toast('Web Push wird hier nicht unterstützt');return}
+ const perm=await Notification.requestPermission();if(perm!=='granted'){toast('Mitteilungen wurden nicht erlaubt');return}
+ const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:toBytes(C.vapidPublicKey)}),j=sub.toJSON();
+ const {error}=await sb.from('push_subscriptions').insert({endpoint:j.endpoint,p256dh:j.keys.p256dh,auth:j.keys.auth,active:true});toast(error&&error.code!=='23505'?'Push konnte nicht gespeichert werden':'Push-Benachrichtigungen sind aktiviert');
+}
+$('#refreshBtn').onclick=triggerManualScan;$('#settingsBtn').onclick=$('#settingsTab').onclick=async()=>{$('#settingsDialog').showModal();await authState()};$('#notifyBtn').onclick=$('#enablePush').onclick=enablePush;
+$('#loginBtn').onclick=async()=>{const email=$('#emailInput').value.trim();if(!email)return toast('Bitte private E-Mail eingeben');const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:C.appBaseUrl}});toast(error?error.message:'Magic Link wurde per E-Mail gesendet')};
+$('#logoutBtn').onclick=async()=>{await sb.auth.signOut();await authState();toast('Abgemeldet')};
+$('#saveSettings').onclick=async()=>{const {error}=await sb.from('products').update({alert_price:Number($('#alertInput').value),target_price:Number($('#targetInput').value)}).eq('id',product.id);if(error)return toast(error.message);for(const t of $$('.switch'))await sb.from('product_sources').update({active:t.checked}).eq('id',t.dataset.id);toast('Einstellungen gespeichert');await load()};
+$$('.segmented button').forEach(b=>b.onclick=async()=>{$$('.segmented button').forEach(x=>x.classList.remove('active'));b.classList.add('active');days=Number(b.dataset.days);await loadHistory()});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js');sb.auth.onAuthStateChange(authState);load();
