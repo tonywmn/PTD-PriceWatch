@@ -16,7 +16,6 @@ SUPABASE_SECRET_KEY = os.environ["SUPABASE_SECRET_KEY"].strip()
 
 HEADERS = {
     "apikey": SUPABASE_SECRET_KEY,
-    "Authorization": f"Bearer {SUPABASE_SECRET_KEY}",
     "Content-Type": "application/json",
     "Prefer": "return=representation",
 }
