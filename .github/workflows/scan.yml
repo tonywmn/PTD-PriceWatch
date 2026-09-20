@@ -3,12 +3,13 @@ name: Price Scan
 on:
   schedule:
     - cron: '*/5 5-16 * * 1-5'
-  workflow_dispat*h:
+
+  workflow_dispatch:
     inputs:
       force_scan:
- *      description: 'Zeitfenster fü* manuellen Scan überschreiben'
-   *    required: false
-        defaul*: true
+        description: 'Zeitfenster beim manuellen Scan überschreiben'
+        required: false
+        default: true
         type: boolean
 
 permissions:
@@ -39,12 +40,12 @@ jobs:
       - name: Chromium installieren
         run: python -m playwright install --with-deps chromium
 
-      -       - name:*Preise*prüfen
-        run: python scripts*scan_prices.py
+      - name: Preise prüfen
+        run: python scripts/scan_prices.py
         env:
-      *   SUPABASE_URL: ${{ secrets.SUPAB*SE_URL }}
-          SUPABASE_SECRE*_KEY: ${{ secrets.SUPABASE_SECRET_*EY }}
-          VAPID_PUBLIC_KEY: *{{ secrets.VAPID_PUBLIC_KEY }}
-   *      VAPID_PRIVATE_KEY: ${{ secre*s.VAPID_PRIVATE_KEY }}
-          A*P_URL: https://tonywmn.github.io/P*D-PriceWatch/
-          FORCE_SCAN* ${{ github.event_name == 'workflo*_dispatch' && inputs.force_scan ||*'false' }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          APP_URL: https://tonywmn.github.io/PTD-PriceWatch/
+          FORCE_SCAN: ${{ inputs.force_scan || 'false' }}
